@@ -50,8 +50,13 @@ class MY_MODULEWidget(ScriptedLoadableModuleWidget):
     parametersCollapsibleButton.text = "Parameters"
     self.layout.addWidget(parametersCollapsibleButton)
 
+    collapsible_Button = ctk.ctkCollapsibleButton()
+    collapsible_Button.text = "Parametry"
+    self.layout.addWidget(collapsible_Button)
+
     # Layout within the dummy collapsible button
     parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
+    collapsibleFormLayout = qt.QFormLayout(collapsible_Button)
 
     #
     # input volume selector
@@ -102,6 +107,41 @@ class MY_MODULEWidget(ScriptedLoadableModuleWidget):
     self.enableScreenshotsFlagCheckBox.setToolTip("If checked, take screen shots for tutorials. Use Save Data to write them to disk.")
     parametersFormLayout.addRow("Enable Screenshots", self.enableScreenshotsFlagCheckBox)
 
+    # new buttons
+    
+    # input change
+    self.nodeSelector = slicer.qMRMLNodeComboBox()
+    self.nodeSelector.nodeTypes = ["vtkMRMLModelNode"]
+    self.nodeSelector.selectNodeUponCreation = True
+    self.nodeSelector.addEnabled = False
+    self.nodeSelector.removeEnabled = False
+    self.nodeSelector.noneEnabled = False
+    self.nodeSelector.showHidden = False
+    self.nodeSelector.showChildNodeTypes = False
+    self.nodeSelector.setMRMLScene( slicer.mrmlScene )
+    self.nodeSelector.setToolTip( "Wybierz dane.")
+    collapsibleFormLayout.addRow("Dane: ", self.nodeSelector)
+
+    # opacity 
+
+    self.opacitySliderWidget = ctk.ctkSliderWidget()
+    self.opacitySliderWidget.singleStep = 1
+    self.opacitySliderWidget.minimum = 0
+    self.opacitySliderWidget.maximum = 100
+    self.opacitySliderWidget.value = 50
+    self.opacitySliderWidget.setToolTip("Wybierz wartosc przezroczystosci.")
+    collapsibleFormLayout.addRow("Przezroczystosc", self.opacitySliderWidget)
+
+    # visibility
+
+    self.visibilityButton = qt.QPushButton("Zmien")
+    collapsibleFormLayout.addRow("Widocznosc", self.visibilityButton)
+
+    # connections 
+    self.nodeSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onChange)
+    self.opacitySliderWidget.connect("valueChanged(double)", self.onOpacityChange)
+    self.visibilityButton.connect('clicked(bool)', self.onVisibilityChange)
+
     #
     # Apply Button
     #
@@ -132,6 +172,20 @@ class MY_MODULEWidget(ScriptedLoadableModuleWidget):
     enableScreenshotsFlag = self.enableScreenshotsFlagCheckBox.checked
     imageThreshold = self.imageThresholdSliderWidget.value
     logic.run(self.inputSelector.currentNode(), self.outputSelector.currentNode(), imageThreshold, enableScreenshotsFlag)
+
+  def onVisibilityChange(self):
+    logic = MY_MODULELogic()
+    logic.changeVisibility(self.nodeSelector.currentNode()) 
+
+  def onOpacityChange(self):
+    logic = MY_MODULELogic()
+    opacityValue = self.opacitySliderWidget.value
+    logic.changeOpacity(self.nodeSelector.currentNode(), opacityValue)
+
+  def onChange(self):
+    logic = MY_MODULELogic()
+    logic.onChange(self.nodeSelector.currentNode(), self.opacitySliderWidget)
+    
 
 #
 # MY_MODULELogic
@@ -174,6 +228,21 @@ class MY_MODULELogic(ScriptedLoadableModuleLogic):
       return False
     return True
 
+  def changeOpacity(self, inputVol, opacityValue):
+    opacityValue = opacityValue/100
+    disply_node = inputVol.GetDisplayNode()
+    disply_node.SetOpacity(opacityValue)
+
+  def changeVisibility(self, inputVol):
+    disply_node = inputVol.GetDisplayNode()
+    disply_node.SetVisibility( not disply_node.GetVisibility())
+  
+  def onChange(self, inputVol, opacitySlider):
+    disply_node = inputVol.GetDisplayNode()
+    opacityValue = disply_node.GetOpacity()*100
+    opacitySlider.value = opacityValue
+
+
   def run(self, inputVolume, outputVolume, imageThreshold, enableScreenshots=0):
     """
     Run the actual algorithm
@@ -188,7 +257,6 @@ class MY_MODULELogic(ScriptedLoadableModuleLogic):
     # Compute the thresholded output volume using the Threshold Scalar Volume CLI module
     cliParams = {'InputVolume': inputVolume.GetID(), 'OutputVolume': outputVolume.GetID(), 'ThresholdValue' : imageThreshold, 'ThresholdType' : 'Above'}
     cliNode = slicer.cli.run(slicer.modules.thresholdscalarvolume, None, cliParams, wait_for_completion=True)
-
     # Capture screenshot
     if enableScreenshots:
       self.takeScreenshot('MY_MODULETest-Start','MyScreenshot',-1)
